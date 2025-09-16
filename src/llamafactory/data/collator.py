@@ -116,6 +116,7 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
             getattr(config, "external_embedding_dim", None) if config is not None else None
         )
 
+
         if self.embedding_library_path is not None:
             self._embedding_library = ExternalEmbeddingLibrary(self.embedding_library_path)
             library_dim = self._embedding_library.embedding_dim
@@ -236,6 +237,7 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
                     if "position_ids" in feature:
                         feature["position_ids"] = list(range(placeholder_len)) + [
                             pos + placeholder_len for pos in feature["position_ids"]
+
                         ]
 
             images = feature.pop("images", None) or []

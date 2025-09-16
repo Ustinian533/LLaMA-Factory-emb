@@ -1,14 +1,18 @@
 ### model
-model_name_or_path: ./data/tiny-external-model
-trust_remote_code: false
+
+model_name_or_path: meta-llama/Meta-Llama-3-8B-Instruct
+trust_remote_code: true
 
 ### method
 stage: sft
 do_train: true
 finetuning_type: lora
+
 lora_rank: 8
 lora_alpha: 16
 lora_target: q_proj,v_proj,k_proj,o_proj
+
+### external embedding projector
 external_embedding_dim: 1024
 external_embedding_use_bias: true
 external_embedding_position: prefix
@@ -33,6 +37,7 @@ plot_loss: true
 overwrite_output_dir: true
 seed: 42
 
+
 ### train
 per_device_train_batch_size: 1
 gradient_accumulation_steps: 1
@@ -43,3 +48,4 @@ max_steps: 10
 bf16: false
 fp16: false
 ddp_timeout: 180000000
+
