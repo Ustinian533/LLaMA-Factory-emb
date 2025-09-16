@@ -714,5 +714,14 @@
       "prompt": "content"
     },
     "folder": "python"
+  },
+  "external_embedding_demo": {
+    "file_name": "external_embedding_demo.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output",
+      "embeddings": "embeddings"
+    }
   }
 }

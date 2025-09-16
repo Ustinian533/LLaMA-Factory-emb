@@ -28,6 +28,7 @@ Currently we support datasets in **alpaca** and **sharegpt** format. Allowed fil
     "images": "the column name in the dataset containing the image inputs. (default: None)",
     "videos": "the column name in the dataset containing the videos inputs. (default: None)",
     "audios": "the column name in the dataset containing the audios inputs. (default: None)",
+    "embeddings": "the column name in the dataset containing external embedding sequences. (default: None)",
     "chosen": "the column name in the dataset containing the chosen answers. (default: None)",
     "rejected": "the column name in the dataset containing the rejected answers. (default: None)",
     "kto_tag": "the column name in the dataset containing the kto tags. (default: None)"
@@ -164,6 +165,53 @@ An additional column `videos` is required. Please refer to the [sharegpt](#share
 ### Multimodal Audio Dataset
 
 An additional column `audios` is required. Please refer to the [sharegpt](#sharegpt-format) format for details.
+
+### External Embedding Column
+
+- [Example dataset](external_embedding_demo.json)
+
+Use the `embeddings` column when you want to attach pre-computed dense vectors (for example, retrieval features or sensor
+signals) to every training sample. Instead of serializing the vectors inline, list the identifiers that should be fetched from
+an embedding library stored as a torch `.pt` file. Each identifier must map to a 1D tensor whose length matches
+`external_embedding_dim` defined in your training configuration.
+
+```json
+[
+  {
+    "instruction": "user instruction",
+    "input": "optional input",
+    "output": "model response",
+    "embeddings": ["demo0", "demo1"]
+  }
+]
+```
+
+And the companion library can be authored as follows:
+
+```python
+import torch
+
+torch.save(
+    {
+        'demo0': torch.randn(1024),
+        'demo1': torch.randn(1024),
+    },
+    'external_embedding_bank.pt',
+)
+```
+
+> [!TIP]
+> Run `python scripts/prepare_external_embedding_demo.py` to automatically generate
+> `external_embedding_bank_demo.pt` and download a compact reference checkpoint into
+> `data/tiny-external-model`. These assets back the
+> `examples/train_lora/mini_external.yaml` recipe without requiring any binary files to
+> live inside the repository history.
+
+Point `embedding_library_path` in your training config to this file so the collator can resolve embedding ids on the fly.
+When batching, LLaMA-Factory pads shorter embedding sequences with zeros and constructs an additional attention mask so the
+learnable projector only receives valid vectors. The example dataset ships with
+`external_embedding_bank_demo.pt`, demonstrating how to feed wide feature vectors into models using the
+`external_embedding_projector` module.
 
 ## Sharegpt Format
 

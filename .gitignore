@@ -177,3 +177,7 @@ wandb/
 swanlog/
 generated_predictions.jsonl
 predictions_score.json
+
+# external embedding demo assets
+data/external_embedding_bank_demo.pt
+data/tiny-external-model/

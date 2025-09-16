@@ -49,7 +49,14 @@ llamafactory-cli train examples/train_lora/llama3_lora_pretrain.yaml
 llamafactory-cli train examples/train_lora/llama3_lora_sft.yaml
 ```
 
-#### External Embedding Projector Demo
+#### Supervised Fine-Tuning with External Embeddings
+
+This minimal recipe keeps the learnable projector trainable while the base model runs with LoRA adapters. It relies on
+`data/external_embedding_demo.json` containing embedding identifiers and the companion
+`data/external_embedding_bank_demo.pt` library, which stores the 1024-dim vectors keyed by those ids.
+Generate these assets alongside the tiny offline model by running
+`python scripts/prepare_external_embedding_demo.py` once before launching the training
+job.
 
 ```bash
 PYTHONPATH=src python -m llamafactory.cli train examples/train_lora/mini_external.yaml
