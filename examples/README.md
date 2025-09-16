@@ -49,6 +49,12 @@ llamafactory-cli train examples/train_lora/llama3_lora_pretrain.yaml
 llamafactory-cli train examples/train_lora/llama3_lora_sft.yaml
 ```
 
+#### External Embedding Projector Demo
+
+```bash
+PYTHONPATH=src python -m llamafactory.cli train examples/train_lora/mini_external.yaml
+```
+
 #### Multimodal Supervised Fine-Tuning
 
 ```bash
