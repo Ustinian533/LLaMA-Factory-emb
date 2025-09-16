@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 import numpy as np
@@ -26,6 +26,7 @@ from transformers import DataCollatorForSeq2Seq
 
 from ..extras.constants import AUDIO_PLACEHOLDER, IGNORE_INDEX, IMAGE_PLACEHOLDER
 from ..extras.packages import is_pillow_available
+from .embedding_loader import ExternalEmbeddingLibrary
 
 
 if is_pillow_available():
@@ -90,6 +91,8 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
 
     template: Optional["Template"] = None
     processor: Optional["ProcessorMixin"] = None
+    embedding_library_path: Optional[str] = None
+    _embedding_library: Optional[ExternalEmbeddingLibrary] = field(init=False, default=None)
 
     def __post_init__(self):
         if self.template is None:
@@ -105,10 +108,136 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
         else:
             self.get_rope_func = None
 
+        config = getattr(self.model, "config", None) if self.model is not None else None
+        self.external_embedding_position: Literal["prefix", "suffix"] = (
+            getattr(config, "external_embedding_position", "prefix") if config is not None else "prefix"
+        )
+        self.external_embedding_dim: Optional[int] = (
+            getattr(config, "external_embedding_dim", None) if config is not None else None
+        )
+
+        if self.embedding_library_path is not None:
+            self._embedding_library = ExternalEmbeddingLibrary(self.embedding_library_path)
+            library_dim = self._embedding_library.embedding_dim
+            if self.external_embedding_dim is None:
+                self.external_embedding_dim = library_dim
+            elif self.external_embedding_dim != library_dim:
+                raise ValueError(
+                    "`external_embedding_dim` mismatches the vectors stored in the embedding library: "
+                    f"expected {self.external_embedding_dim}, library provides {library_dim}."
+                )
+
+    def _normalize_embedding_spec(self, embeddings: Any) -> list[Any]:
+        if embeddings is None:
+            return []
+
+        if isinstance(embeddings, torch.Tensor):
+            tensor = embeddings.detach().cpu()
+            if tensor.dim() == 1:
+                return [tensor.tolist()]
+            if tensor.dim() == 2:
+                return tensor.tolist()
+            raise ValueError("External embeddings must be one or two dimensional tensors.")
+
+        if isinstance(embeddings, dict):
+            if "ids" in embeddings:
+                return self._normalize_embedding_spec(embeddings["ids"])
+            if "id" in embeddings:
+                return self._normalize_embedding_spec([embeddings["id"]])
+            if "values" in embeddings:
+                return self._normalize_embedding_spec(embeddings["values"])
+            raise ValueError("Unsupported embedding specification dictionary structure.")
+
+        if isinstance(embeddings, (str, int)):
+            return [str(embeddings)]
+
+        if isinstance(embeddings, (list, tuple)):
+            if all(isinstance(item, (int, float)) for item in embeddings):
+                return [list(float(item) for item in embeddings)]
+
+            normalized: list[Any] = []
+            for item in embeddings:
+                if isinstance(item, torch.Tensor):
+                    normalized.extend(self._normalize_embedding_spec(item))
+                elif isinstance(item, dict):
+                    normalized.extend(self._normalize_embedding_spec(item))
+                elif isinstance(item, (list, tuple)):
+                    normalized.extend(self._normalize_embedding_spec(item))
+                elif isinstance(item, str):
+                    normalized.append(item)
+                elif isinstance(item, (int, float)):
+                    normalized.append(str(item))
+                elif item is None:
+                    continue
+                else:
+                    normalized.append(item)
+
+            return normalized
+
+        return [embeddings]
+
+    @staticmethod
+    def _is_embedding_id(entry: Any) -> bool:
+        return isinstance(entry, str)
+
+    def _resolve_embeddings(self, entries: list[Any]) -> torch.Tensor:
+        if self._embedding_library is not None and all(self._is_embedding_id(item) for item in entries):
+            ids = [str(item) for item in entries]
+            return self._embedding_library.batch_resolve(ids)
+
+        if any(self._is_embedding_id(item) for item in entries):
+            raise ValueError(
+                "Embedding identifiers provided without configuring `embedding_library_path`."
+            )
+
+        tensor = torch.as_tensor(entries, dtype=torch.float32)
+        if tensor.dim() == 1:
+            tensor = tensor.unsqueeze(0)
+
+        return tensor
+
     def __call__(self, features: list[dict[str, Any]]) -> dict[str, "torch.Tensor"]:
+        pad_token_id = getattr(self.tokenizer, "pad_token_id", None)
+        if pad_token_id is None:
+            pad_token_id = getattr(self.tokenizer, "eos_token_id", None)
+        if pad_token_id is None:
+            pad_token_id = 0
+
         batch_images, batch_videos, batch_audios = [], [], []
         batch_imglens, batch_vidlens, batch_audlens, batch_input_ids = [], [], [], []
+        batch_embeddings: list[list[Any]] = []
+        batch_embedding_lens: list[int] = []
+
         for feature in features:
+            normalized_embeddings = self._normalize_embedding_spec(feature.pop("embeddings", None))
+            batch_embeddings.append(normalized_embeddings)
+            batch_embedding_lens.append(len(normalized_embeddings))
+
+            if len(normalized_embeddings) > 0:
+                placeholder_len = len(normalized_embeddings)
+                if self.external_embedding_position == "suffix":
+                    mask_value = feature["attention_mask"][-1] if len(feature["attention_mask"]) > 0 else 1
+                    mask_value = mask_value if mask_value != 0 else 1
+                    feature["input_ids"] = feature["input_ids"] + [pad_token_id] * placeholder_len
+                    feature["attention_mask"] = feature["attention_mask"] + [mask_value] * placeholder_len
+                    if "labels" in feature:
+                        feature["labels"] = feature["labels"] + [IGNORE_INDEX] * placeholder_len
+                    if "position_ids" in feature:
+                        start_pos = feature["position_ids"][-1] + 1 if len(feature["position_ids"]) > 0 else 0
+                        feature["position_ids"] = feature["position_ids"] + list(
+                            range(start_pos, start_pos + placeholder_len)
+                        )
+                else:
+                    mask_value = feature["attention_mask"][0] if len(feature["attention_mask"]) > 0 else 1
+                    feature["input_ids"] = [pad_token_id] * placeholder_len + feature["input_ids"]
+                    feature["attention_mask"] = [mask_value] * placeholder_len + feature["attention_mask"]
+                    if "labels" in feature:
+                        feature["labels"] = [IGNORE_INDEX] * placeholder_len + feature["labels"]
+                    if "position_ids" in feature:
+                        feature["position_ids"] = list(range(placeholder_len)) + [
+                            pos + placeholder_len for pos in feature["position_ids"]
+                        ]
+
             images = feature.pop("images", None) or []
             videos = feature.pop("videos", None) or []
             audios = feature.pop("audios", None) or []
@@ -182,6 +311,52 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
 
         features: dict[str, torch.Tensor] = super().__call__(features)
 
+        batch_size = len(batch_embeddings)
+        max_embedding_len = max(batch_embedding_lens) if batch_embedding_lens else 0
+        embedding_dim = self.external_embedding_dim
+        processed_embeddings: list[Optional[torch.Tensor]] = []
+        for embeddings in batch_embeddings:
+            if len(embeddings) == 0:
+                processed_embeddings.append(None)
+                continue
+
+            tensor = self._resolve_embeddings(embeddings)
+
+            if embedding_dim is None:
+                embedding_dim = tensor.size(-1)
+                self.external_embedding_dim = embedding_dim
+            elif tensor.size(-1) != embedding_dim:
+                raise ValueError(
+                    "Mismatched external embedding dimensions detected in the batch. "
+                    f"Expected {embedding_dim}, got {tensor.size(-1)}."
+                )
+
+            processed_embeddings.append(tensor)
+
+        if embedding_dim is None:
+            embedding_dim = 0
+            self.external_embedding_dim = 0
+
+        external_embeddings = torch.zeros((batch_size, max_embedding_len, embedding_dim), dtype=torch.float32)
+        external_attention_mask = torch.zeros((batch_size, max_embedding_len), dtype=torch.long)
+        external_token_count = torch.zeros(batch_size, dtype=torch.long)
+
+        for idx, tensor in enumerate(processed_embeddings):
+            if tensor is None:
+                continue
+
+            length = tensor.size(0)
+            if length == 0:
+                continue
+
+            external_embeddings[idx, :length, : tensor.size(-1)] = tensor
+            external_attention_mask[idx, :length] = 1
+            external_token_count[idx] = length
+
+        features["external_embeddings"] = external_embeddings
+        features["external_attention_mask"] = external_attention_mask
+        features["external_token_count"] = external_token_count
+
         if self.get_rope_func is not None:
             rope_index_kwargs = {
                 "input_ids": features["input_ids"],
@@ -227,7 +402,14 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
         if "image_bound" in features:  # for minicpmv inputs
             bsz, seq_length = features["input_ids"].shape
             features["position_ids"] = torch.arange(seq_length).long().repeat(bsz, 1)
-            return {"data": features, "input_ids": features["input_ids"], "labels": features["labels"]}
+            return {
+                "data": features,
+                "input_ids": features["input_ids"],
+                "labels": features["labels"],
+                "external_embeddings": features["external_embeddings"],
+                "external_attention_mask": features["external_attention_mask"],
+                "external_token_count": features["external_token_count"],
+            }
 
         return features
 
@@ -272,6 +454,7 @@ class PairwiseDataCollatorWithPadding(MultiModalDataCollatorForSeq2Seq):
                     "images": feature["images"],
                     "videos": feature["videos"],
                     "audios": feature["audios"],
+                    "embeddings": feature["embeddings"],
                 }
                 concatenated_features.append(target_feature)
 
@@ -294,6 +477,7 @@ class KTODataCollatorWithPadding(MultiModalDataCollatorForSeq2Seq):
                 "images": feature["images"],
                 "videos": feature["videos"],
                 "audios": feature["audios"],
+                "embeddings": feature["embeddings"],
             }
             kl_feature = {
                 "input_ids": feature["kl_input_ids"],
@@ -302,6 +486,7 @@ class KTODataCollatorWithPadding(MultiModalDataCollatorForSeq2Seq):
                 "images": feature["images"],
                 "videos": feature["videos"],
                 "audios": feature["audios"],
+                "embeddings": feature["embeddings"],
             }
             target_features.append(target_feature)
             kl_features.append(kl_feature)
@@ -312,6 +497,9 @@ class KTODataCollatorWithPadding(MultiModalDataCollatorForSeq2Seq):
         batch["kl_input_ids"] = kl_batch["input_ids"]
         batch["kl_attention_mask"] = kl_batch["attention_mask"]
         batch["kl_labels"] = kl_batch["labels"]
+        batch["kl_external_embeddings"] = kl_batch["external_embeddings"]
+        batch["kl_external_attention_mask"] = kl_batch["external_attention_mask"]
+        batch["kl_external_token_count"] = kl_batch["external_token_count"]
         if "cross_attention_mask" in kl_batch:  # for mllama inputs
             batch["kl_cross_attention_mask"] = kl_batch["cross_attention_mask"]
 

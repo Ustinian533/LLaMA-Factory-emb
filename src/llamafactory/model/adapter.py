@@ -198,6 +198,12 @@ def _setup_lora_tuning(
         logger.info_rank0("Loaded adapter(s): {}".format(",".join(model_args.adapter_name_or_path)))
 
     if is_trainable and adapter_to_resume is None:  # create new lora weights while training
+        if hasattr(model, "external_embedding_projector"):
+            if finetuning_args.additional_target is None:
+                finetuning_args.additional_target = []
+            if "external_embedding_projector" not in finetuning_args.additional_target:
+                finetuning_args.additional_target.append("external_embedding_projector")
+
         if len(finetuning_args.lora_target) == 1 and finetuning_args.lora_target[0] == "all":
             target_modules = find_all_linear_modules(model, finetuning_args.freeze_vision_tower)
         else:

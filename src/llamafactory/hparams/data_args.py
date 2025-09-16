@@ -137,6 +137,16 @@ class DataArguments:
         default=False,
         metadata={"help": "Whether or not to use a shared file system for the datasets."},
     )
+    embedding_library_path: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Path to a torch serialized dictionary that maps embedding identifiers to vectors. "
+                "When provided, dataset rows can reference external embeddings by id instead of "
+                "embedding the raw vectors in the dataset file."
+            )
+        },
+    )
 
     def __post_init__(self):
         def split_arg(arg):

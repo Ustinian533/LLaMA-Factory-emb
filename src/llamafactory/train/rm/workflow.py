@@ -45,7 +45,11 @@ def run_rm(
     dataset_module = get_dataset(template, model_args, data_args, training_args, stage="rm", **tokenizer_module)
     model = load_model(tokenizer, model_args, finetuning_args, training_args.do_train, add_valuehead=True)
     data_collator = PairwiseDataCollatorWithPadding(
-        template=template, model=model, pad_to_multiple_of=8, **tokenizer_module
+        template=template,
+        model=model,
+        pad_to_multiple_of=8,
+        embedding_library_path=data_args.embedding_library_path,
+        **tokenizer_module,
     )
 
     # Initialize our Trainer

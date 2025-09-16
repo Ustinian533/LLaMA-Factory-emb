@@ -1,0 +1,45 @@
+### model
+model_name_or_path: ./data/tiny-external-model
+trust_remote_code: false
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 8
+lora_alpha: 16
+lora_target: q_proj,v_proj,k_proj,o_proj
+external_embedding_dim: 1024
+external_embedding_use_bias: true
+external_embedding_position: prefix
+
+### dataset
+dataset_dir: ./data
+dataset: external_embedding_demo
+template: empty
+cutoff_len: 64
+max_samples: 3
+overwrite_cache: true
+preprocessing_num_workers: 1
+embedding_library_path: ./data/external_embedding_bank_demo.pt
+
+### output
+output_dir: output/mini-external
+logging_steps: 1
+save_steps: 100
+save_only_model: true
+report_to: none
+plot_loss: true
+overwrite_output_dir: true
+seed: 42
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 1
+learning_rate: 1.0e-4
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+max_steps: 10
+bf16: false
+fp16: false
+ddp_timeout: 180000000

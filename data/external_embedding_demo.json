@@ -1,0 +1,20 @@
+[
+  {
+    "instruction": "use retrieved facts from ids demo0 demo1.",
+    "input": "context: solar array stable; battery charged.",
+    "output": "answer: solar array stable and battery charged.",
+    "embeddings": ["demo0", "demo1"]
+  },
+  {
+    "instruction": "use retrieved facts from ids demo2.",
+    "input": "context: gamma status nominal.",
+    "output": "answer: gamma status nominal.",
+    "embeddings": ["demo2"]
+  },
+  {
+    "instruction": "use retrieved facts from ids demo1 demo3 demo0.",
+    "input": "context: delta vectors align model input.",
+    "output": "answer: delta vectors align model input.",
+    "embeddings": ["demo1", "demo3", "demo0"]
+  }
+]

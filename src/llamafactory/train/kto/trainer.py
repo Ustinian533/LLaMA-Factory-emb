@@ -161,6 +161,11 @@ class CustomKTOTrainer(KTOTrainer):
         if f"{prefix}cross_attention_mask" in batch:
             model_inputs["cross_attention_mask"] = batch[f"{prefix}cross_attention_mask"]
 
+        if f"{prefix}external_embeddings" in batch:
+            model_inputs["external_embeddings"] = batch[f"{prefix}external_embeddings"]
+            model_inputs["external_attention_mask"] = batch[f"{prefix}external_attention_mask"]
+            model_inputs["external_token_count"] = batch[f"{prefix}external_token_count"]
+
         logits = model(**model_inputs, return_dict=True, use_cache=False).logits.to(torch.float32)
         logps, valid_length = get_batch_logps(logits=logits, labels=batch[f"{prefix}labels"])
         return logits, logps, logps / valid_length

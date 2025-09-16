@@ -62,6 +62,7 @@ def run_sft(
         block_diag_attn=model_args.block_diag_attn,
         attn_implementation=getattr(model.config, "_attn_implementation", None),
         compute_dtype=model_args.compute_dtype,
+        embedding_library_path=data_args.embedding_library_path,
         **tokenizer_module,
     )
 
