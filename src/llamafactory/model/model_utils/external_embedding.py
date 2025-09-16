@@ -148,8 +148,11 @@ def _patch_model_forward(model: "torch.nn.Module") -> None:
 
                 embed_layer = self.get_input_embeddings()
                 inputs_embeds = embed_layer(input_ids)
-                kwargs["inputs_embeds"] = inputs_embeds
                 kwargs["input_ids"] = None
+
+            # Avoid in-place modifications on a view that would break autograd.
+            inputs_embeds = inputs_embeds.clone()
+            kwargs["inputs_embeds"] = inputs_embeds
 
             counts = (
                 external_token_count.to(inputs_embeds.device)
@@ -169,7 +172,9 @@ def _patch_model_forward(model: "torch.nn.Module") -> None:
                 mask = (
                     torch.arange(max_tokens, device=prefix.device).unsqueeze(0) < counts.unsqueeze(1)
                 ).unsqueeze(-1)
-                inputs_embeds[:, :max_tokens, :] = torch.where(mask, projected, prefix)
+                updated_prefix = torch.where(mask, projected, prefix)
+                inputs_embeds = torch.cat((updated_prefix, inputs_embeds[:, max_tokens:, :]), dim=1)
+                kwargs["inputs_embeds"] = inputs_embeds
 
         kwargs.pop("external_embeddings", None)
         kwargs.pop("external_attention_mask", None)
