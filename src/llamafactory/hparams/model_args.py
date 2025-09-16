@@ -75,6 +75,18 @@ class BaseModelArguments:
         default=None,
         metadata={"help": "Special tokens to be added into the tokenizer. Use commas to separate multiple tokens."},
     )
+    external_embedding_dim: Optional[int] = field(
+        default=None,
+        metadata={"help": "Dimension of the external embeddings to be injected into the model."},
+    )
+    external_embedding_use_bias: bool = field(
+        default=True,
+        metadata={"help": "Whether to use a bias term in the external embedding projection layer."},
+    )
+    external_embedding_position: Literal["prefix", "suffix"] = field(
+        default="prefix",
+        metadata={"help": "Where to insert projected external embeddings in the token sequence."},
+    )
     model_revision: str = field(
         default="main",
         metadata={"help": "The specific model version to use (can be a branch name, tag name or commit id)."},
@@ -178,6 +190,9 @@ class BaseModelArguments:
 
         if self.split_special_tokens and self.use_fast_tokenizer:
             raise ValueError("`split_special_tokens` is only supported for slow tokenizers.")
+
+        if self.external_embedding_dim is not None and self.external_embedding_dim <= 0:
+            raise ValueError("`external_embedding_dim` must be a positive integer.")
 
         if self.adapter_name_or_path is not None:  # support merging multiple lora weights
             self.adapter_name_or_path = [path.strip() for path in self.adapter_name_or_path.split(",")]

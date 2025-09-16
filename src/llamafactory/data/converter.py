@@ -127,6 +127,7 @@ class AlpacaDatasetConverter(DatasetConverter):
             "_images": self._find_medias(example[self.dataset_attr.images]) if self.dataset_attr.images else None,
             "_videos": self._find_medias(example[self.dataset_attr.videos]) if self.dataset_attr.videos else None,
             "_audios": self._find_medias(example[self.dataset_attr.audios]) if self.dataset_attr.audios else None,
+            "_embeddings": example[self.dataset_attr.embeddings] if self.dataset_attr.embeddings else None,
         }
         return output
 
@@ -363,6 +364,7 @@ class OpenAIDatasetConverter(DatasetConverter):
             "_images": self._find_medias(example[self.dataset_attr.images]) if self.dataset_attr.images else None,
             "_videos": self._find_medias(example[self.dataset_attr.videos]) if self.dataset_attr.videos else None,
             "_audios": self._find_medias(example[self.dataset_attr.audios]) if self.dataset_attr.audios else None,
+            "_embeddings": example[self.dataset_attr.embeddings] if self.dataset_attr.embeddings else None,
         }
         return output
 
@@ -406,6 +408,7 @@ def align_dataset(
     _images: []
     _videos: []
     _audios: []
+    _embeddings: []
     """
     column_names = list(next(iter(dataset)).keys())
     kwargs = {}

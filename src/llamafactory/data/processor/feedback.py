@@ -113,6 +113,7 @@ class FeedbackDatasetProcessor(DatasetProcessor):
             model_inputs["images"].append(examples["_images"][i])
             model_inputs["videos"].append(examples["_videos"][i])
             model_inputs["audios"].append(examples["_audios"][i])
+            model_inputs["embeddings"].append(examples["_embeddings"][i])
 
         desirable_num = sum([1 for tag in model_inputs["kto_tags"] if tag])
         undesirable_num = len(model_inputs["kto_tags"]) - desirable_num
