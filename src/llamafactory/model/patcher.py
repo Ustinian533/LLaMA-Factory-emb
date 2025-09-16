@@ -27,6 +27,7 @@ from ..extras.packages import is_transformers_version_greater_than
 from .model_utils.attention import configure_attn_implementation, print_attn_implementation
 from .model_utils.checkpointing import prepare_model_for_training
 from .model_utils.embedding import resize_embedding_layer
+from .model_utils.external_embedding import attach_external_embedding_module
 from .model_utils.kv_cache import configure_kv_cache
 from .model_utils.longlora import configure_longlora
 from .model_utils.moe import add_z3_leaf_module, configure_moe
@@ -176,6 +177,21 @@ def patch_model(
 
     if model_args.resize_vocab:
         resize_embedding_layer(model, tokenizer)
+
+    external_dim = model_args.external_embedding_dim
+    if external_dim is None:
+        external_dim = getattr(model.config, "external_embedding_dim", None)
+
+    if model_args.external_embedding_dim is not None:
+        external_bias = model_args.external_embedding_use_bias
+        external_position = model_args.external_embedding_position
+    else:
+        external_bias = getattr(model.config, "external_embedding_use_bias", model_args.external_embedding_use_bias)
+        external_position = getattr(
+            model.config, "external_embedding_position", model_args.external_embedding_position
+        )
+
+    attach_external_embedding_module(model, external_dim, external_bias, external_position)
 
     if is_trainable:
         if getattr(model.config, "model_type", None) == "gemma3n":
